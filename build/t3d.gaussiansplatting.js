@@ -43,6 +43,8 @@ const GaussianSplattingShader = {
 
         const float sqrt8 = sqrt(8.0);
 
+        #include <logdepthbuf_pars_vert>
+
         void main () {
             vec2 centersTextureSize = vec2(textureSize(centersTexture, 0));
             vec4 sampledCenter = texture(centersTexture, getDataUV(1, 0, centersTextureSize));
@@ -109,8 +111,6 @@ const GaussianSplattingShader = {
             // need cov2Dm[1][0] because it is a symetric matrix.
             vec3 cov2Dv = vec3(cov2Dm[0][0], cov2Dm[0][1], cov2Dm[1][1]);
 
-            vec3 ndcCenter = clipCenter.xyz / clipCenter.w;
-
             // We now need to solve for the eigen-values and eigen vectors of the 2D covariance matrix
             // so that we can determine the 2D basis for the splat. This is done using the method described
             // here: https://people.math.harvard.edu/~knill/teaching/math21b2004/exhibits/2dmatrices/index.html
@@ -150,17 +150,22 @@ const GaussianSplattingShader = {
             // Similarly scale the position data we send to the fragment shader
             vPosition *= sqrt8;
 
-            gl_Position = vec4(ndcCenter.xy + ndcOffset, ndcCenter.z, 1.0);
+            gl_Position = vec4(clipCenter.xy + ndcOffset * clipCenter.w, clipCenter.zw);
+
+            #include <logdepthbuf_vert>
         }
 	`,
 
 	fragmentShader: `
 		#include <common_frag>
+        #include <logdepthbuf_pars_frag>
 
 		varying vec4 vColor;
 		varying vec2 vPosition;
 
 		void main () {
+            #include <logdepthbuf_frag>
+
 			// Compute the positional squared distance from the center of the splat to the current fragment.
             float A = dot(vPosition, vPosition);
             // Since the positional data in vPosition has been scaled by sqrt(8), the squared result will be

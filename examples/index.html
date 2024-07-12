@@ -116,9 +116,9 @@
 			}
 		});
 
-		const params = { 'Y+': false };
+		const params = { 'rotateX': 0 };
 		const gui = new GUI();
-		gui.add(params, 'Y+');
+		gui.add(params, 'rotateX', [-90, 0, 90]);
 
 		function loop(count) {
 			requestAnimationFrame(loop);
@@ -126,7 +126,7 @@
 			controller.update();
 
 			if (mesh) {
-				mesh.euler.x = params['Y+'] ? -Math.PI / 2 : 0;
+				mesh.euler.x = params.rotateX / 180 * Math.PI;
 				mesh.update(camera, width, height);
 			}
 

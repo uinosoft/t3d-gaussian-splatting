@@ -41,6 +41,8 @@
 		import { OrbitControls } from 't3d/addons/controls/OrbitControls.js';
 		import { SplatLoader, PLYLoader } from 't3d-gaussian-splatting';
 
+		import { GUI } from './libs/lil-gui.esm.min.js';
+
 		let width = window.innerWidth || 2;
 		let height = window.innerHeight || 2;
 
@@ -80,7 +82,7 @@
 		const url = './resources/bonsai-7k-mini.splat';
 		let mesh;
 
-		const splatLoader = new SplatLoader(loadingManager);
+		const splatLoader = new SplatLoader(loadingManager); // or new PLYLoader(loadingManager);
 		splatLoader.loadAsync(url).then(({ buffer, node }) => {
 			mesh = node;
 			scene.add(mesh);
@@ -114,12 +116,17 @@
 			}
 		});
 
+		const params = { 'Y+': false };
+		const gui = new GUI();
+		gui.add(params, 'Y+');
+
 		function loop(count) {
 			requestAnimationFrame(loop);
 
 			controller.update();
 
 			if (mesh) {
+				mesh.euler.x = params['Y+'] ? -Math.PI / 2 : 0;
 				mesh.update(camera, width, height);
 			}
 

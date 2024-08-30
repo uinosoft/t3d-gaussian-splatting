@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="utf-8">
+	<title>T3D Gaussian Splatting Example</title>
+	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+	<link type="text/css" rel="stylesheet" href="main.css" />
+	<style>
+		#fileInput {
+			max-width: 180px;
+		}
+	</style>
+</head>
+
+<body>
+	<div id="info">
+		<a href="" target="_blank">t3d-gaussian-splatting</a> example<br />
+		Loading a Gaussian splat file and rendering it with <a href="https://github.com/uinosoft/t3d.js"
+			target="_blank">t3d.js</a><br />
+		Or you can choose a .ply/.splat file to load: <input type='file' id='fileInput' />
+		<div id="notSupported" style="display:none">Sorry, your graphics card + browser does not support webgl2</div>
+	</div>
+
+	<script src="./libs/nanobar.min.js"></script>
+
+	<!-- Import maps polyfill -->
+	<!-- Remove this when import maps will be widely supported -->
+	<script async src="./libs/es-module-shims.js"></script>
+
+	<script type='importmap'>
+		{
+			"imports": {
+				"t3d": "./libs/t3d/build/t3d.module.js",
+				"t3d/addons/": "./libs/t3d/examples/jsm/",
+				"t3d-gaussian-splatting": "../build/t3d.gaussiansplatting.js"
+			}
+		}
+	</script>
+
+	<script type='module'>
+		import * as t3d from 't3d';
+		import { OrbitControls } from 't3d/addons/controls/OrbitControls.js';
+		import { SplatLoader, PLYLoader } from 't3d-gaussian-splatting';
+		import { GBuffer } from 't3d/addons/GBuffer.js';
+		import { DepthLinearShader } from 't3d/addons/shaders/DepthLinearShader.js';
+		import { CopyShader } from 't3d/addons/shaders/CopyShader.js';
+		import { GUI } from './libs/lil-gui.esm.min.js';
+		import { Raycaster } from 't3d/addons/Raycaster.js';
+
+		let width = window.innerWidth || 2;
+		let height = window.innerHeight || 2;
+
+		const canvas = document.createElement('canvas');
+		canvas.width = width;
+		canvas.height = height;
+		document.body.appendChild(canvas);
+
+
+		const scene = new t3d.Scene();
+
+		const camera = new t3d.Camera();
+		camera.position.set(0, 1, 5);
+		let fov = 45 / 180 * Math.PI;
+		const near = 0.1;
+		const far = 1000;
+		camera.setPerspective(fov, width / height, near, far);
+		scene.add(camera);
+
+		const controller = new OrbitControls(camera, canvas);
+
+		const nanobar = new Nanobar();
+		nanobar.el.style.background = 'gray';
+
+		const loadingManager = new t3d.LoadingManager(function () {
+			nanobar.go(100);
+			nanobar.el.style.background = 'transparent';
+		}, function (url, itemsLoaded, itemsTotal) {
+			if (itemsLoaded < itemsTotal) {
+				nanobar.go(itemsLoaded / itemsTotal * 100);
+			}
+		});
+
+		const url = './resources/Park.splat';
+		let mesh;
+
+		const backRenderTarget = new t3d.RenderTargetBack(canvas);
+		const contextParams = { antialias: false, alpha: false };
+		const gl = canvas.getContext('webgl2', contextParams) || canvas.getContext('webgl', contextParams);
+		const renderer = new t3d.WebGLRenderer(gl);
+
+		const splatLoader = new SplatLoader(loadingManager); // or new PLYLoader(loadingManager);
+		splatLoader.loadAsync(url).then(({ buffer, node }) => {
+			mesh = node;
+			console.log(node);
+			mesh.material.depthWrite = true
+			scene.add(mesh);
+		});
+
+		const tempRenderTarget = new t3d.RenderTarget2D(width, height);
+		tempRenderTarget.texture.minFilter = t3d.TEXTURE_FILTER.NEAREST;
+		tempRenderTarget.texture.magFilter = t3d.TEXTURE_FILTER.NEAREST;
+		tempRenderTarget.texture.generateMipmaps = false;
+
+		const depthTexture = new t3d.Texture2D();
+		depthTexture.image = { data: null, width: width, height: height };
+		depthTexture.type = t3d.PIXEL_TYPE.UNSIGNED_SHORT; // UNSIGNED_SHORT, UNSIGNED_INT
+		depthTexture.format = t3d.PIXEL_FORMAT.DEPTH_COMPONENT;
+		depthTexture.magFilter = t3d.TEXTURE_FILTER.NEAREST;
+		depthTexture.minFilter = t3d.TEXTURE_FILTER.NEAREST;
+		depthTexture.generateMipmaps = false;
+		depthTexture.flipY = false;
+		tempRenderTarget.detach(t3d.ATTACHMENT.DEPTH_STENCIL_ATTACHMENT);
+		tempRenderTarget.attach(
+			depthTexture,
+			t3d.ATTACHMENT.DEPTH_ATTACHMENT
+		);
+
+		const depthLinearPass = new t3d.ShaderPostPass(DepthLinearShader);
+		depthLinearPass.uniforms['depthTex'] = depthTexture;
+		depthLinearPass.uniforms['cameraNear'] = 0.1;
+		depthLinearPass.uniforms['cameraFar'] = 1000;
+
+
+		const tempRenderTarget2 = new t3d.RenderTarget2D(width, height);
+		tempRenderTarget2.texture.minFilter = t3d.TEXTURE_FILTER.NEAREST;
+		tempRenderTarget2.texture.magFilter = t3d.TEXTURE_FILTER.NEAREST;
+		tempRenderTarget2.texture.generateMipmaps = false;
+
+
+		let w = canvas.width;
+		let h = canvas.height;
+		let clickPending = false;
+		let mouseX = 0, mouseY = 0;
+		let clientX =0,clientY =0;
+		let cachedPixels = new Uint8Array(w * h * 4);
+
+		const handleDoubleClick = (event) => {
+			// 记录点击位置并设置标志位
+			mouseX = event.x;
+			mouseY = event.y;
+			clientX =event.clientX;
+			clientY =event.clientY;
+			clickPending = true;
+		}
+		const doubleClick = (mouseX, mouseY,clientX,clientY) => {
+
+			// get depth value at mouse click position
+			const idx = (h - mouseY) * w + mouseX;
+			const pixelValue = 1 - cachedPixels[4 * idx + 0] / 255; // depthLinearPass depth has been minus by 1;
+			// console.log("depth pixelValue", pixelValue);
+
+			// recover distance from depth buffer
+			// const a = camera.projectionMatrix.elements[10];
+			// const b = camera.projectionMatrix.elements[11];
+			// const near = b * (a + 1) / (a * a - 1);
+			// const far = b * (a - 1) / (a * a - 1);
+			const camZ = pixelValue * (far - near) + near;
+			const yRange = camZ * Math.tan(fov / 2);
+			const xRange = yRange * w / h;
+			const camY = yRange * Math.abs(h / 2 - mouseY) / (h / 2);
+			const camX = xRange * Math.abs(w / 2 - mouseX) / (w / 2);
+			const distance = Math.sqrt(camX * camX + camY * camY + camZ * camZ);
+
+			const pointer = new t3d.Vector2();
+			pointer.x = (clientX / window.innerWidth) * 2 - 1;
+			pointer.y = - (clientY / window.innerHeight) * 2 + 1;
+			const raycaster = new Raycaster();
+			raycaster.setFromCamera(pointer, camera);
+
+			// raycast with distance
+			const cameraPos = camera.position.clone();
+			const cameraDir = raycaster.ray.direction;
+			const anchor = cameraPos.add(cameraDir.multiplyScalar(distance));
+
+			// place a cube as marker
+			let box = new t3d.Mesh(new t3d.BoxGeometry(), new t3d.BasicMaterial());
+			box.material.transparent = true;
+			box.material.diffuse.setRGB(0, 1, 0);
+			box.renderOrder = 1
+			box.material.opacity = 0.5;
+			box.scale.set(10, 10, 10);
+			box.position.set(anchor.x, anchor.y + 2.5, anchor.z);
+			scene.add(box);
+
+
+		}
+
+		window.addEventListener("dblclick", handleDoubleClick)
+		document.getElementById('fileInput').addEventListener('change', async event => {
+			const file = event.target.files[0];
+
+			if (file) {
+				if (file.name.match(/\.splat$/)) {
+					const buffer = await file.arrayBuffer();
+					const splatLoader = new SplatLoader(loadingManager);
+					const result = splatLoader.parse(buffer);
+
+					scene.remove(mesh);
+					mesh.dispose();
+					mesh = result.node;
+
+					console.log(mesh)
+					scene.add(mesh);
+				} else if (file.name.match(/\.ply$/)) {
+					const buffer = await file.arrayBuffer();
+					const plyLoader = new PLYLoader(loadingManager);
+					const result = plyLoader.parse(buffer);
+
+					scene.remove(mesh);
+					mesh.dispose();
+					mesh = result.node;
+					scene.add(mesh);
+				} else {
+					console.error('Unsupported file type:', file.name);
+				}
+			}
+		});
+
+		const params = { 'rotateX': 0 };
+		const gui = new GUI();
+		gui.add(params, 'rotateX', [-90, 0, 90, 180]);
+		function loop(count) {
+			requestAnimationFrame(loop);
+
+			controller.update();
+
+			if (mesh) {
+				mesh.euler.x = params.rotateX / 180 * Math.PI;
+				mesh.update(camera, width, height);
+			}
+
+			scene.updateMatrix();
+			scene.updateRenderStates(camera);
+			scene.updateRenderQueue(camera);
+
+			renderer.setRenderTarget(tempRenderTarget);
+			renderer.setClearColor(0, 0, 0., 1);
+			renderer.clear(true, true, true);
+			renderer.renderScene(scene, camera);
+
+			renderer.setRenderTarget(tempRenderTarget2);
+			renderer.setClearColor(0, 0, 0, 1);
+			renderer.clear(true, true, true);
+			depthLinearPass.render(renderer);
+
+			if (clickPending) {
+				renderer.readRenderTargetPixels(0, 0, w, h, cachedPixels);
+				doubleClick(mouseX, mouseY,clientX,clientY);
+				clickPending = false;
+			}
+
+			renderer.setRenderTarget(backRenderTarget);
+			renderer.setClearColor(0, 0, 0, 1);
+			renderer.clear(true, true, true);
+			renderer.renderScene(scene, camera);
+		}
+		requestAnimationFrame(loop);
+
+		function onWindowResize() {
+			width = window.innerWidth || 2;
+			height = window.innerHeight || 2;
+
+			camera.setPerspective(45 / 180 * Math.PI, width / height, 0.1, 1000);
+
+			backRenderTarget.resize(width, height);
+			tempRenderTarget.resize(width, height);
+			tempRenderTarget2.resize(width, height);
+		}
+		window.addEventListener('resize', onWindowResize, false);
+	</script>
+</body>
+
+</html>

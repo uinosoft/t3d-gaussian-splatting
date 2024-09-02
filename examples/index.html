@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
 	<meta charset="utf-8">
 	<title>T3D Gaussian Splatting Example</title>
@@ -11,10 +12,12 @@
 		}
 	</style>
 </head>
+
 <body>
 	<div id="info">
-		<a href="" target="_blank">t3d-gaussian-splatting</a> example<br/>
-		Loading a Gaussian splat file and rendering it with <a href="https://github.com/uinosoft/t3d.js" target="_blank">t3d.js</a><br/>
+		<a href="" target="_blank">t3d-gaussian-splatting</a> example<br />
+		Loading a Gaussian splat file and rendering it with <a href="https://github.com/uinosoft/t3d.js"
+			target="_blank">t3d.js</a><br />
 		Or you can choose a .ply/.splat file to load: <input type='file' id='fileInput' />
 		<div id="notSupported" style="display:none">Sorry, your graphics card + browser does not support webgl2</div>
 	</div>
@@ -37,10 +40,8 @@
 
 	<script type='module'>
 		import * as t3d from 't3d';
-		import { ForwardRenderer } from 't3d/addons/render/ForwardRenderer.js';
 		import { OrbitControls } from 't3d/addons/controls/OrbitControls.js';
 		import { SplatLoader, PLYLoader } from 't3d-gaussian-splatting';
-
 		import { GUI } from './libs/lil-gui.esm.min.js';
 
 		let width = window.innerWidth || 2;
@@ -51,18 +52,12 @@
 		canvas.height = height;
 		document.body.appendChild(canvas);
 
-		const forwardRenderer = new ForwardRenderer(canvas);
-
-		if (forwardRenderer.capabilities.version < 2) {
-			document.getElementById('notSupported').style.display = '';
-			throw new Error('Not supported webgl2 !');
-		}
-
 		const scene = new t3d.Scene();
 
 		const camera = new t3d.Camera();
 		camera.position.set(0, 1, 5);
-		camera.setPerspective(45 / 180 * Math.PI, width / height, 0.1, 1000);
+		let fov = 45 / 180 * Math.PI;
+		camera.setPerspective(fov, width / height, 0.1, 1000);
 		scene.add(camera);
 
 		const controller = new OrbitControls(camera, canvas);
@@ -70,21 +65,27 @@
 		const nanobar = new Nanobar();
 		nanobar.el.style.background = 'gray';
 
-		const loadingManager = new t3d.LoadingManager(function() {
+		const loadingManager = new t3d.LoadingManager(function () {
 			nanobar.go(100);
 			nanobar.el.style.background = 'transparent';
-		}, function(url, itemsLoaded, itemsTotal) {
+		}, function (url, itemsLoaded, itemsTotal) {
 			if (itemsLoaded < itemsTotal) {
 				nanobar.go(itemsLoaded / itemsTotal * 100);
 			}
 		});
 
-		const url = './resources/bonsai-7k-mini.splat';
+		const url = './resources/Park.splat';
 		let mesh;
+
+		const backRenderTarget = new t3d.RenderTargetBack(canvas);
+		const contextParams = { antialias: false, alpha: false };
+		const gl = canvas.getContext('webgl2', contextParams) || canvas.getContext('webgl', contextParams);
+		const renderer = new t3d.WebGLRenderer(gl);
 
 		const splatLoader = new SplatLoader(loadingManager); // or new PLYLoader(loadingManager);
 		splatLoader.loadAsync(url).then(({ buffer, node }) => {
 			mesh = node;
+			mesh.material.depthWrite = true
 			scene.add(mesh);
 		});
 
@@ -116,10 +117,33 @@
 			}
 		});
 
-		const params = { 'rotateX': 0 };
+		const params = {
+			'rotateX': 180, 
+			'alpha': 0.25, 
+			'visableId':200000,
+			'boxMin': [-20, -20, -20],
+			'boxMax': [0, 20, 0]
+		};
 		const gui = new GUI();
 		gui.add(params, 'rotateX', [-90, 0, 90, 180]);
+		gui.add(params, 'alpha', 0, 0.99, 0.01).onChange(value => {
+			mesh.material.uniforms.alpha = value;
+		});
 
+		gui.add(params.boxMin, 0, -500, -100).step(1).name('Box Min X').onChange(updateBoxMin);
+		gui.add(params.boxMin, 1, -500, -100).step(1).name('Box Min Y').onChange(updateBoxMin);
+		gui.add(params.boxMin, 2, -500, -100).step(1).name('Box Min Z').onChange(updateBoxMin);
+
+		gui.add(params.boxMax, 0, -100, 0).step(1).name('Box Max X').onChange(updateBoxMax);
+		gui.add(params.boxMax, 1, -100, 20).step(1).name('Box Max Y').onChange(updateBoxMax);
+		gui.add(params.boxMax, 2, -100, 0).step(1).name('Box Max Z').onChange(updateBoxMax);
+		function updateBoxMin() {
+			mesh.material.uniforms.boxMin = params.boxMin;
+		}
+
+		function updateBoxMax() {
+			mesh.material.uniforms.boxMax = params.boxMax;
+		}
 		function loop(count) {
 			requestAnimationFrame(loop);
 
@@ -130,7 +154,14 @@
 				mesh.update(camera, width, height);
 			}
 
-			forwardRenderer.render(scene, camera);
+			scene.updateMatrix();
+			scene.updateRenderStates(camera);
+			scene.updateRenderQueue(camera);
+
+			renderer.setRenderTarget(backRenderTarget);
+			renderer.setClearColor(0, 0, 0, 1);
+			renderer.clear(true, true, true);
+			renderer.renderScene(scene, camera);
 		}
 		requestAnimationFrame(loop);
 
@@ -140,9 +171,10 @@
 
 			camera.setPerspective(45 / 180 * Math.PI, width / height, 0.1, 1000);
 
-			forwardRenderer.backRenderTarget.resize(width, height);
+			backRenderTarget.resize(width, height);
 		}
 		window.addEventListener('resize', onWindowResize, false);
 	</script>
 </body>
+
 </html>

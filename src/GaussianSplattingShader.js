@@ -8,7 +8,10 @@ const GaussianSplattingShader = {
 		'centersTexture': null,
 		'colorsTexture': null,
 		'focal': [0, 0],
-		'basisViewport': [0, 0]
+		'basisViewport': [0, 0],
+        'useDepthFade':1,
+        'depthFade':0,
+        'u_cameraPlane':[0,1]
 	},
 
 	// Contains the code to project 3D covariance to 2D and from there calculate the quad (using the eigen vectors of the
@@ -26,6 +29,10 @@ const GaussianSplattingShader = {
 
         uniform vec2 focal;
         uniform vec2 basisViewport;
+
+        uniform bool useDepthFade;
+        uniform float depthFade;
+        uniform vec2 u_cameraPlane;
 
         varying vec4 vColor;
         varying vec2 vPosition;
@@ -147,7 +154,18 @@ const GaussianSplattingShader = {
             // Similarly scale the position data we send to the fragment shader
             vPosition *= sqrt8;
 
-            gl_Position = vec4(clipCenter.xy + ndcOffset * clipCenter.w, clipCenter.zw);
+            float scalingFactor = 1.0;
+
+            float near = u_cameraPlane.x; float far = u_cameraPlane.y;
+            if (useDepthFade) {
+                float depthNorm = (clipCenter.z / clipCenter.w + 1.0) / 2.0;
+                float normalizedDepth = (2.0 * near) / (far + near - depthNorm * (far - near));
+                float start = max(normalizedDepth - 0.1, 0.0);
+                float end = min(normalizedDepth + 0.1, 1.0);
+                scalingFactor = clamp((depthFade - start) / (end - start), 0.0, 1.0);
+            }
+
+            gl_Position = vec4(clipCenter.xy + ndcOffset * clipCenter.w * scalingFactor, clipCenter.zw);
 
             #include <logdepthbuf_vert>
         }

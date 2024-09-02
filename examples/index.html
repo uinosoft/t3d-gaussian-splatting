@@ -61,9 +61,13 @@
 		const scene = new t3d.Scene();
 
 		const camera = new t3d.Camera();
-		camera.position.set(0, 1, 5);
-		camera.setPerspective(45 / 180 * Math.PI, width / height, 0.1, 1000);
+		camera.position.set(-116, 107, 476);
+		const near =0.1,far = 1000;
+		camera.setPerspective(45 / 180 * Math.PI, width / height, near, far);
 		scene.add(camera);
+
+		let value =0;
+		let speed =1.;
 
 		const controller = new OrbitControls(camera, canvas);
 
@@ -79,12 +83,13 @@
 			}
 		});
 
-		const url = './resources/bonsai-7k-mini.splat';
+		const url = './resources/Park.splat';
 		let mesh;
 
 		const splatLoader = new SplatLoader(loadingManager); // or new PLYLoader(loadingManager);
 		splatLoader.loadAsync(url).then(({ buffer, node }) => {
 			mesh = node;
+			mesh.material.uniforms.u_cameraPlane = [near,far];
 			scene.add(mesh);
 		});
 
@@ -116,7 +121,7 @@
 			}
 		});
 
-		const params = { 'rotateX': 0 };
+		const params = { 'rotateX': 180 };
 		const gui = new GUI();
 		gui.add(params, 'rotateX', [-90, 0, 90, 180]);
 
@@ -128,6 +133,12 @@
 			if (mesh) {
 				mesh.euler.x = params.rotateX / 180 * Math.PI;
 				mesh.update(camera, width, height);
+
+				mesh.material.uniforms.depthFade = value;
+				value = Math.min(value + speed * 0.01, 1.0);
+				if (value >= 1.0) {
+					mesh.material.uniforms.useDepthFade = 0;
+				}
 			}
 
 			forwardRenderer.render(scene, camera);

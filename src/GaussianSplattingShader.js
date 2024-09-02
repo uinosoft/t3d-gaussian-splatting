@@ -9,8 +9,7 @@ const GaussianSplattingShader = {
 		'colorsTexture': null,
 		'focal': [0, 0],
 		'basisViewport': [0, 0],
-        'boxMin':[-200,-200,-200],
-        'boxMax':[1000,1000,1000]
+        'visableId':2000,
 	},
 
 	// Contains the code to project 3D covariance to 2D and from there calculate the quad (using the eigen vectors of the
@@ -31,7 +30,7 @@ const GaussianSplattingShader = {
 
         varying vec4 vColor;
         varying vec2 vPosition;
-        varying vec3 vCenter;
+        varying float vId;
 
         vec2 getDataUV(in int stride, in int offset, in vec2 dimensions) {
             vec2 samplerUV = vec2(0.0, 0.0);
@@ -61,7 +60,7 @@ const GaussianSplattingShader = {
                 return;
             }
 
-            vCenter = splatCenter.xyz;
+            vId = float(splatIndex);
             vPosition = a_Position.xy;
             vec2 colorsTextureSize = vec2(textureSize(colorsTexture, 0));
             vColor = texture(colorsTexture, getDataUV(1, 0, colorsTextureSize));
@@ -163,9 +162,8 @@ const GaussianSplattingShader = {
 
 		varying vec4 vColor;
 		varying vec2 vPosition;
-        varying vec3 vCenter;
-        uniform vec3 boxMin;
-        uniform vec3 boxMax;
+        varying float vId;
+        uniform float visableId;
 
 		void main () {
             #include <logdepthbuf_frag>
@@ -179,10 +177,7 @@ const GaussianSplattingShader = {
             if (A > 8.0) discard;
             vec3 color = vColor.rgb;
             vec4 redOverlay = vec4(1.0, 0.0, 0.0, 0.5);
-            bool insideBox = all(greaterThanEqual(vCenter, boxMin)) && all(lessThanEqual(vCenter, boxMax));
-            if (insideBox) {
-                color = mix(color, redOverlay.rgb, redOverlay.a);
-            }
+            if(vId < visableId) color = mix(color, redOverlay.rgb, redOverlay.a);
 
             // Since the rendered splat is scaled by sqrt(8), the inverse covariance matrix that is part of
             // the gaussian formula becomes the identity matrix. We're then left with (X - mean) * (X - mean),

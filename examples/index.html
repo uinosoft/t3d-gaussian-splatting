@@ -103,6 +103,7 @@
 		splatLoader.loadAsync(url).then(({ buffer, node }) => {
 			mesh = node;
 			// mesh.material.depthWrite = true
+			mesh.material.uniforms.boxMax = [0, -120, 0]
 			scene.add(mesh);
 		});
 

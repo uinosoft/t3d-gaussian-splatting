@@ -116,9 +116,12 @@
 			}
 		});
 
-		const params = { 'rotateX': 0 };
+		const params = { rotateX: 0, alphaCutOff: 0.25, color: [1, 1, 1], opacity: 1 };
 		const gui = new GUI();
 		gui.add(params, 'rotateX', [-90, 0, 90, 180]);
+		gui.add(params, 'alphaCutOff', 0, 1);
+		gui.addColor(params, 'color');
+		gui.add(params, 'opacity', 0, 1);
 
 		function loop(count) {
 			requestAnimationFrame(loop);
@@ -126,6 +129,10 @@
 			controller.update();
 
 			if (mesh) {
+				mesh.material.uniforms.alphaCutOff = params.alphaCutOff;
+				mesh.material.diffuse.fromArray(params.color);
+				mesh.material.opacity = params.opacity;
+
 				mesh.euler.x = params.rotateX / 180 * Math.PI;
 				mesh.update(camera, width, height);
 			}

@@ -8,7 +8,8 @@ const GaussianSplattingShader = {
 		'centersTexture': null,
 		'colorsTexture': null,
 		'focal': [0, 0],
-		'basisViewport': [0, 0]
+		'basisViewport': [0, 0],
+		'alphaCutOff': 0.25
 	},
 
 	// Contains the code to project 3D covariance to 2D and from there calculate the quad (using the eigen vectors of the
@@ -157,6 +158,8 @@ const GaussianSplattingShader = {
 		#include <common_frag>
         #include <logdepthbuf_pars_frag>
 
+        uniform float alphaCutOff;
+
 		varying vec4 vColor;
 		varying vec2 vPosition;
 
@@ -170,6 +173,11 @@ const GaussianSplattingShader = {
             // defined by the rectangle formed by vPosition. It also means it's farther
             // away than sqrt(8) standard deviations from the mean.
             if (A > 8.0) discard;
+
+            if (vColor.a < alphaCutOff) {
+                discard;
+            }
+
             vec3 color = vColor.rgb;
 
             // Since the rendered splat is scaled by sqrt(8), the inverse covariance matrix that is part of
@@ -177,7 +185,7 @@ const GaussianSplattingShader = {
             // and since 'mean' is zero, we have X * X, which is the same as A:
             float opacity = exp(-0.5 * A) * vColor.a;
 
-            gl_FragColor = vec4(color.rgb, opacity);
+            gl_FragColor = vec4(color.rgb * u_Color, opacity * u_Opacity);
 		}
 	`
 };

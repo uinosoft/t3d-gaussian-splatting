@@ -136,10 +136,31 @@
 
 		const params = {
 			'rotateX': 180, 
+			'alpha': 0.25, 
+			'visableId':200000,
+			'boxMin': [-20, -20, -20],
+			'boxMax': [0, 20, 0]
 		};
 		const gui = new GUI();
 		gui.add(params, 'rotateX', [-90, 0, 90, 180]);
+		gui.add(params, 'alpha', 0, 0.99, 0.01).onChange(value => {
+			mesh.material.uniforms.alpha = value;
+		});
 
+		gui.add(params.boxMin, 0, -500, -100).step(1).name('Box Min X').onChange(updateBoxMin);
+		gui.add(params.boxMin, 1, -500, -100).step(1).name('Box Min Y').onChange(updateBoxMin);
+		gui.add(params.boxMin, 2, -500, -100).step(1).name('Box Min Z').onChange(updateBoxMin);
+
+		gui.add(params.boxMax, 0, -100, 0).step(1).name('Box Max X').onChange(updateBoxMax);
+		gui.add(params.boxMax, 1, -100, 20).step(1).name('Box Max Y').onChange(updateBoxMax);
+		gui.add(params.boxMax, 2, -100, 0).step(1).name('Box Max Z').onChange(updateBoxMax);
+		function updateBoxMin() {
+			mesh.material.uniforms.boxMin = params.boxMin;
+		}
+
+		function updateBoxMax() {
+			mesh.material.uniforms.boxMax = params.boxMax;
+		}
 		function loop(count) {
 			requestAnimationFrame(loop);
 

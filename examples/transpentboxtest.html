@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+	<meta charset="utf-8">
+	<title>T3D Gaussian Splatting Example</title>
+	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+	<link type="text/css" rel="stylesheet" href="main.css" />
+	<style>
+		#fileInput {
+			max-width: 180px;
+		}
+	</style>
+</head>
+
+<body>
+	<div id="info">
+		<a href="" target="_blank">t3d-gaussian-splatting</a> example<br />
+		Loading a Gaussian splat file and rendering it with <a href="https://github.com/uinosoft/t3d.js"
+			target="_blank">t3d.js</a><br />
+		Or you can choose a .ply/.splat file to load: <input type='file' id='fileInput' />
+		<div id="notSupported" style="display:none">Sorry, your graphics card + browser does not support webgl2</div>
+	</div>
+
+	<script src="./libs/nanobar.min.js"></script>
+
+	<!-- Import maps polyfill -->
+	<!-- Remove this when import maps will be widely supported -->
+	<script async src="./libs/es-module-shims.js"></script>
+
+	<script type='importmap'>
+		{
+			"imports": {
+				"t3d": "./libs/t3d/build/t3d.module.js",
+				"t3d/addons/": "./libs/t3d/examples/jsm/",
+				"t3d-gaussian-splatting": "../build/t3d.gaussiansplatting.js"
+			}
+		}
+	</script>
+
+	<script type='module'>
+		import * as t3d from 't3d';
+		import { OrbitControls } from 't3d/addons/controls/OrbitControls.js';
+		import { SplatLoader, PLYLoader } from 't3d-gaussian-splatting';
+		import { GUI } from './libs/lil-gui.esm.min.js';
+
+		let width = window.innerWidth || 2;
+		let height = window.innerHeight || 2;
+
+		const canvas = document.createElement('canvas');
+		canvas.width = width;
+		canvas.height = height;
+		document.body.appendChild(canvas);
+
+		const scene = new t3d.Scene();
+
+		const createBox = (color, position) => {
+			const box = new t3d.Mesh(new t3d.BoxGeometry(), new t3d.BasicMaterial());
+			box.material.transparent = true;
+			box.material.diffuse.setRGB(...color);
+			box.renderOrder = 1;
+			box.material.opacity = 0.5;
+			box.scale.set(60, 20, 60);
+			box.position.copy(position);
+			box.euler.y = 0.04 * Math.PI;
+			scene.add(box);
+		};
+
+		createBox([0, 1, 0], new t3d.Vector3(-100, 10, 102));
+		createBox([1, 0, 0], new t3d.Vector3(-90, 10, 178));
+		createBox([0, 0, 1], new t3d.Vector3(-160, 10, 184));
+		createBox([1, 1, 0], new t3d.Vector3(-175, 10, 108));
+
+		const camera = new t3d.Camera();
+		camera.position.set(-116, 107, 475);
+		let fov = 45 / 180 * Math.PI;
+		camera.setPerspective(fov, width / height, 0.1, 1000);
+		scene.add(camera);
+
+		const controller = new OrbitControls(camera, canvas);
+
+		const nanobar = new Nanobar();
+		nanobar.el.style.background = 'gray';
+
+		const loadingManager = new t3d.LoadingManager(function () {
+			nanobar.go(100);
+			nanobar.el.style.background = 'transparent';
+		}, function (url, itemsLoaded, itemsTotal) {
+			if (itemsLoaded < itemsTotal) {
+				nanobar.go(itemsLoaded / itemsTotal * 100);
+			}
+		});
+
+		const url = './resources/Park.splat';
+		let mesh;
+
+		const backRenderTarget = new t3d.RenderTargetBack(canvas);
+		const contextParams = { antialias: false, alpha: false };
+		const gl = canvas.getContext('webgl2', contextParams) || canvas.getContext('webgl', contextParams);
+		const renderer = new t3d.WebGLRenderer(gl);
+
+		const splatLoader = new SplatLoader(loadingManager); // or new PLYLoader(loadingManager);
+		splatLoader.loadAsync(url).then(({ buffer, node }) => {
+			mesh = node;
+			// mesh.material.depthWrite = true
+			scene.add(mesh);
+		});
+
+		document.getElementById('fileInput').addEventListener('change', async event => {
+			const file = event.target.files[0];
+
+			if (file) {
+				if (file.name.match(/\.splat$/)) {
+					const buffer = await file.arrayBuffer();
+					const splatLoader = new SplatLoader(loadingManager);
+					const result = splatLoader.parse(buffer);
+
+					scene.remove(mesh);
+					mesh.dispose();
+					mesh = result.node;
+					scene.add(mesh);
+				} else if (file.name.match(/\.ply$/)) {
+					const buffer = await file.arrayBuffer();
+					const plyLoader = new PLYLoader(loadingManager);
+					const result = plyLoader.parse(buffer);
+
+					scene.remove(mesh);
+					mesh.dispose();
+					mesh = result.node;
+					scene.add(mesh);
+				} else {
+					console.error('Unsupported file type:', file.name);
+				}
+			}
+		});
+
+		const params = {
+			'rotateX': 180, 
+		};
+		const gui = new GUI();
+		gui.add(params, 'rotateX', [-90, 0, 90, 180]);
+
+		function loop(count) {
+			requestAnimationFrame(loop);
+
+			controller.update();
+
+			if (mesh) {
+				mesh.euler.x = params.rotateX / 180 * Math.PI;
+				mesh.update(camera, width, height);
+			}
+
+			scene.updateMatrix();
+			scene.updateRenderStates(camera);
+			scene.updateRenderQueue(camera);
+
+			renderer.setRenderTarget(backRenderTarget);
+			renderer.setClearColor(0, 0, 0, 1);
+			renderer.clear(true, true, true);
+			renderer.renderScene(scene, camera);
+		}
+		requestAnimationFrame(loop);
+
+		function onWindowResize() {
+			width = window.innerWidth || 2;
+			height = window.innerHeight || 2;
+
+			camera.setPerspective(45 / 180 * Math.PI, width / height, 0.1, 1000);
+
+			backRenderTarget.resize(width, height);
+		}
+		window.addEventListener('resize', onWindowResize, false);
+	</script>
+</body>
+
+</html>

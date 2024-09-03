@@ -73,7 +73,7 @@
 
 		const camera = new t3d.Camera();
 		camera.position.set(-116, 107, 475);
-		let fov = 45 / 180 * Math.PI;
+		const fov = 45 / 180 * Math.PI;
 		camera.setPerspective(fov, width / height, 0.1, 1000);
 		scene.add(camera);
 
@@ -82,29 +82,21 @@
 		const nanobar = new Nanobar();
 		nanobar.el.style.background = 'gray';
 
-		const loadingManager = new t3d.LoadingManager(function () {
+		const loadingManager = new t3d.LoadingManager(function() {
 			nanobar.go(100);
 			nanobar.el.style.background = 'transparent';
-		}, function (url, itemsLoaded, itemsTotal) {
+		}, function(url, itemsLoaded, itemsTotal) {
 			if (itemsLoaded < itemsTotal) {
 				nanobar.go(itemsLoaded / itemsTotal * 100);
 			}
 		});
 
-		const url = './resources/Park.splat';
 		let mesh;
 
 		const backRenderTarget = new t3d.RenderTargetBack(canvas);
 		const contextParams = { antialias: false, alpha: false };
 		const gl = canvas.getContext('webgl2', contextParams) || canvas.getContext('webgl', contextParams);
 		const renderer = new t3d.WebGLRenderer(gl);
-
-		const splatLoader = new SplatLoader(loadingManager); // or new PLYLoader(loadingManager);
-		splatLoader.loadAsync(url).then(({ buffer, node }) => {
-			mesh = node;
-			// mesh.material.depthWrite = true
-			scene.add(mesh);
-		});
 
 		document.getElementById('fileInput').addEventListener('change', async event => {
 			const file = event.target.files[0];
@@ -115,8 +107,11 @@
 					const splatLoader = new SplatLoader(loadingManager);
 					const result = splatLoader.parse(buffer);
 
-					scene.remove(mesh);
-					mesh.dispose();
+					if (mesh) {
+						scene.remove(mesh);
+						mesh.dispose();
+					}
+		
 					mesh = result.node;
 					scene.add(mesh);
 				} else if (file.name.match(/\.ply$/)) {
@@ -124,8 +119,11 @@
 					const plyLoader = new PLYLoader(loadingManager);
 					const result = plyLoader.parse(buffer);
 
-					scene.remove(mesh);
-					mesh.dispose();
+					if (mesh) {
+						scene.remove(mesh);
+						mesh.dispose();
+					}
+		
 					mesh = result.node;
 					scene.add(mesh);
 				} else {
@@ -134,11 +132,12 @@
 			}
 		});
 
-		const params = {
-			'rotateX': 180, 
-		};
+		const params = { rotateX: 180, alphaCutOff: 0.25, color: [1, 1, 1], opacity: 1 };
 		const gui = new GUI();
 		gui.add(params, 'rotateX', [-90, 0, 90, 180]);
+		gui.add(params, 'alphaCutOff', 0, 1);
+		gui.addColor(params, 'color');
+		gui.add(params, 'opacity', 0, 1);
 
 		function loop(count) {
 			requestAnimationFrame(loop);
@@ -146,6 +145,10 @@
 			controller.update();
 
 			if (mesh) {
+				mesh.material.uniforms.alphaCutOff = params.alphaCutOff;
+				mesh.material.diffuse.fromArray(params.color);
+				mesh.material.opacity = params.opacity;
+
 				mesh.euler.x = params.rotateX / 180 * Math.PI;
 				mesh.update(camera, width, height);
 			}

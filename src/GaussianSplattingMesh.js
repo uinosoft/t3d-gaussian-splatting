@@ -32,7 +32,7 @@ class GaussianSplattingMesh extends Mesh {
 	update(camera, width, height) {
 		_mvpMatrix.copy(camera.projectionViewMatrix);
 		_mvpMatrix.multiply(this.worldMatrix);
-		this._worker.update(_mvpMatrix);
+		this._worker.update(_mvpMatrix, camera.frustum, this.worldMatrix.elements);
 
 		if (this._internalData.vertexCount > 0) {
 			this.material.updateUniforms(camera, width, height);

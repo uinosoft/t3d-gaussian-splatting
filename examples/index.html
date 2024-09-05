@@ -39,6 +39,9 @@
 		import * as t3d from 't3d';
 		import { ForwardRenderer } from 't3d/addons/render/ForwardRenderer.js';
 		import { OrbitControls } from 't3d/addons/controls/OrbitControls.js';
+		import { ViewControls } from 't3d/addons/controls/ViewControls.js';
+		import { Clock } from 't3d/addons/Clock.js';
+
 		import { SplatLoader, PLYLoader } from 't3d-gaussian-splatting';
 
 		import { GUI } from './libs/lil-gui.esm.min.js';
@@ -61,11 +64,39 @@
 		const scene = new t3d.Scene();
 
 		const camera = new t3d.Camera();
-		camera.position.set(0, 1, 5);
-		camera.setPerspective(45 / 180 * Math.PI, width / height, 0.1, 1000);
 		scene.add(camera);
 
 		const controller = new OrbitControls(camera, canvas);
+
+		const viewControls = new ViewControls(camera, {
+			target: controller.target,
+			up: controller.up,
+			style: 'position:fixed;top:0;left:0;opacity:0.9;z-index:10000;user-select:none;'
+		});
+		document.body.appendChild(viewControls.domElement);
+
+		const meshContainer = new t3d.Object3D();
+		scene.add(meshContainer);
+
+		let mesh, cameraNear = 0.1, cameraFar = 1000;
+		function showMesh({ buffer, node }) {
+			if (mesh) {
+				meshContainer.remove(mesh);
+				mesh.dispose();
+			}
+		
+			mesh = node;
+
+			const boundingSphere = mesh.geometry.boundingSphere;
+
+			controller.target.set(0, 0, 0);
+			camera.position.copy(new t3d.Vector3(0, boundingSphere.radius * 0.8, boundingSphere.radius * 2));
+			mesh.position.copy(boundingSphere.center).negate();
+			cameraNear = boundingSphere.radius * 0.01, cameraFar = boundingSphere.radius * 10;
+			camera.setPerspective(45 / 180 * Math.PI, width / height, cameraNear, cameraFar);
+		
+			meshContainer.add(mesh);
+		}
 
 		const nanobar = new Nanobar();
 		nanobar.el.style.background = 'gray';
@@ -80,13 +111,8 @@
 		});
 
 		const url = './resources/bonsai-7k-mini.splat';
-		let mesh;
-
 		const splatLoader = new SplatLoader(loadingManager); // or new PLYLoader(loadingManager);
-		splatLoader.loadAsync(url).then(({ buffer, node }) => {
-			mesh = node;
-			scene.add(mesh);
-		});
+		splatLoader.loadAsync(url).then(showMesh);
 
 		document.getElementById('fileInput').addEventListener('change', async event => {
 			const file = event.target.files[0];
@@ -96,45 +122,47 @@
 					const buffer = await file.arrayBuffer();
 					const splatLoader = new SplatLoader(loadingManager);
 					const result = splatLoader.parse(buffer);
-
-					scene.remove(mesh);
-					mesh.dispose();
-					mesh = result.node;
-					scene.add(mesh);
+					showMesh(result);
 				} else if (file.name.match(/\.ply$/)) {
 					const buffer = await file.arrayBuffer();
 					const plyLoader = new PLYLoader(loadingManager);
 					const result = plyLoader.parse(buffer);
-
-					scene.remove(mesh);
-					mesh.dispose();
-					mesh = result.node;
-					scene.add(mesh);
+					showMesh(result);
 				} else {
 					console.error('Unsupported file type:', file.name);
 				}
 			}
 		});
 
-		const params = { rotateX: 0, alphaCutOff: 0.25, color: [1, 1, 1], opacity: 1 };
+		const params = { rotateX: 0, alphaCutOff: 0, color: [1, 1, 1], opacity: 1 };
+		const debugParams = { points: 0 };
 		const gui = new GUI();
 		gui.add(params, 'rotateX', [-90, 0, 90, 180]);
 		gui.add(params, 'alphaCutOff', 0, 1);
 		gui.addColor(params, 'color');
 		gui.add(params, 'opacity', 0, 1);
+		const debugFolder = gui.addFolder('Debug');
+		debugFolder.add(debugParams, 'points').name('Points Number').listen().enable(false);
 
+		const clock = new Clock();
 		function loop(count) {
 			requestAnimationFrame(loop);
 
+			const deltaTime = clock.getDelta();
+
 			controller.update();
+
+			viewControls.update(deltaTime);
+
+			meshContainer.euler.x = params.rotateX / 180 * Math.PI;
 
 			if (mesh) {
 				mesh.material.uniforms.alphaCutOff = params.alphaCutOff;
 				mesh.material.diffuse.fromArray(params.color);
 				mesh.material.opacity = params.opacity;
-
-				mesh.euler.x = params.rotateX / 180 * Math.PI;
 				mesh.update(camera, width, height);
+
+				debugParams.points = mesh.geometry.instanceCount;
 			}
 
 			forwardRenderer.render(scene, camera);
@@ -145,7 +173,7 @@
 			width = window.innerWidth || 2;
 			height = window.innerHeight || 2;
 
-			camera.setPerspective(45 / 180 * Math.PI, width / height, 0.1, 1000);
+			camera.setPerspective(45 / 180 * Math.PI, width / height, cameraNear, cameraFar);
 
 			forwardRenderer.backRenderTarget.resize(width, height);
 		}

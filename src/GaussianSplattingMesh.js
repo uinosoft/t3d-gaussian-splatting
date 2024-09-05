@@ -13,6 +13,8 @@ class GaussianSplattingMesh extends Mesh {
 		material.setTextures(internalData);
 
 		const geometry = new GaussianSplattingGeometry(internalData.vertexCount);
+		geometry.boundingSphere.setFromArray(internalData.positions);
+		geometry.boundingBox.setFromArray(internalData.positions);
 
 		super(geometry, material);
 

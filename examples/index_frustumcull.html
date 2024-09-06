@@ -44,6 +44,7 @@
 		import { OrbitControls } from 't3d/addons/controls/OrbitControls.js';
 		import { SplatLoader, PLYLoader } from 't3d-gaussian-splatting';
 		import { CameraHelper } from 't3d/addons/objects/CameraHelper.js';
+		import Stats from './libs/stats.module.js';
 
 		import { GUI } from './libs/lil-gui.esm.min.js';
 
@@ -87,6 +88,7 @@
 		scene.add(sphere);
 
 		const controller = new OrbitControls(camera, canvas);
+		controller.target.set(-175., 20, 108);
 
 		const nanobar = new Nanobar();
 		nanobar.el.style.background = 'gray';
@@ -143,10 +145,12 @@
 		gui.add(params, 'rotateX', [-90, 0, 90, 180]);
 		let _vec4 = new t3d.Vector4();
 
-
+		const stats = new Stats();
+		stats.showPanel(0);
+		document.body.appendChild(stats.dom);
 		function loop(count) {
 			requestAnimationFrame(loop);
-
+			stats.begin();
 			cameraHelper.update();
 
 			debugCamera.position.copy(camera.position);
@@ -160,8 +164,9 @@
 
 			}
 
-			// ^.*uniform .*\]
+			// forwardRenderer.render(scene, camera);
 			forwardRenderer.render(scene, debugCamera);
+			stats.end();
 		}
 		requestAnimationFrame(loop);
 

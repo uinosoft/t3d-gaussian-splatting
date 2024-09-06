@@ -28,10 +28,11 @@ class SplatIndexSortWorker {
 			if (e.data.init) {
 				this._status = WORKER_STATUS.READY;
 			} else {
-				let updatedMixArray = e.data.slicedArray;
-				let validCount = e.data.validCount;
-				const indices = new Uint32Array(updatedMixArray.buffer);
-				this.onUpdate && this.onUpdate(indices, validCount, 2);
+				this._mixArray = e.data.mixArray;
+				const validCount = e.data.validCount;
+				const indices = new Uint32Array(this._mixArray.buffer);
+				console.log(validCount,count)
+				this.onUpdate && this.onUpdate(indices, count, validCount, 2);
 				this._status = WORKER_STATUS.READY;
 			}
 		};
@@ -47,9 +48,7 @@ class SplatIndexSortWorker {
 			if (Math.abs(dot - 1) >= 0.01) {
 				this._lastMVPMatrix.copy(mvpMatrix);
 				this._status = WORKER_STATUS.BUSY;
-				// 修改后的 _mixArray
-				const updatedMixArray = this._mixArray.slice();
-				this._worker.postMessage({ mvpMatrix: el1, mixArray: updatedMixArray, frustum: frustum, worldMatrix });
+				this._worker.postMessage({ mvpMatrix: el1, mixArray: this._mixArray, frustum: frustum, worldMatrix }, [this._mixArray.buffer]);
 				// this._worker.postMessage({ mvpMatrix: el1, mixArray: this._mixArray, frustum }, [this._mixArray.buffer]);
 			}
 		}
@@ -77,8 +76,20 @@ function workerTemplate(self) {
 	let count = 0;
 	let positions;
 
-	function dot(A, B) {
-		return A[0] * B[0] + A[1] * B[1] + A[2] * B[2];
+	// dot: vector3 * vector3
+	const dotFunc = function dotFunc(vec1, vec2) {
+		return vec1[0] * vec2[0] + vec1[1] * vec2[1] + vec1[2] * vec2[2];
+	}
+
+	// multiply: matrix4x4 * vector3
+	const mulFunc = function mulFunc(e, x, y, z) {
+		const w = 1 / (e[3] * x + e[7] * y + e[11] * z + e[15]);
+
+		return [
+			(e[0] * x + e[4] * y + e[8] * z + e[12]) * w,
+			(e[1] * x + e[5] * y + e[9] * z + e[13]) * w,
+			(e[2] * x + e[6] * y + e[10] * z + e[14]) * w,
+		];
 	}
 	function containsPoint(frustum, point) {
 
@@ -86,7 +97,7 @@ function workerTemplate(self) {
 
 		for (let i = 0; i < 6; i++) {
 			const normal = [planes[i].normal.x, planes[i].normal.y, planes[i].normal.z];
-			const distance = dot(point, normal) + planes[i].constant;
+			const distance = dotFunc(point, normal) + planes[i].constant;
 			if (distance < 0) {
 				return false;
 			}
@@ -121,17 +132,12 @@ function workerTemplate(self) {
 			// 	);
 			// }
 
+			console.time("sort");
 			let isInsideFrustum = false;
 			for (let i = 0; i < count; i++) {
 				// model pos
-				const point = [positions[3 * i + 0], positions[3 * i + 1], positions[3 * i + 2]];
 				let worldPos = [];
-
-				const w = 1 / (positions[3 * i + 0] * worldMatrix[3] + positions[3 * i + 1] * worldMatrix[7] + positions[3 * i + 2] * worldMatrix[11] + worldMatrix[15]);//
-
-				worldPos[0] = (positions[3 * i + 0] * worldMatrix[0] + positions[3 * i + 1] * worldMatrix[4] + positions[3 * i + 2] * worldMatrix[8] + worldMatrix[12]) * w;//
-				worldPos[1] = (positions[3 * i + 0] * worldMatrix[1] + positions[3 * i + 1] * worldMatrix[5] + positions[3 * i + 2] * worldMatrix[9] + worldMatrix[13]) * w;//
-				worldPos[2] = (positions[3 * i + 0] * worldMatrix[2] + positions[3 * i + 1] * worldMatrix[6] + positions[3 * i + 2] * worldMatrix[10] + worldMatrix[14]) * w;//
+				worldPos = mulFunc(worldMatrix, positions[3 * i + 0], positions[3 * i + 1], positions[3 * i + 2]);
 
 				isInsideFrustum = containsPoint(frustum, worldPos);
 				if (isInsideFrustum) {
@@ -144,15 +150,19 @@ function workerTemplate(self) {
 					);
 					validCount++;
 				}
+				else{
+					const j = count -1 -(i- validCount);
+					indices[2 * j] = count;
+					floatMix[2 * j + 1] = 10000;
+				}
+				
 				// Skip behind of camera and small, transparent splat
 			}
-			// console.log(validCount, count)
-			// mixArray.sort();
+			mixArray.sort();
 
-			const slicedArray = mixArray.slice(0, validCount);
-			slicedArray.sort();
-			self.postMessage({ slicedArray, validCount });
-
+			console.timeEnd("sort");
+			self.postMessage({ mixArray, validCount }, [mixArray.buffer]);
+			
 			// self.postMessage(mixArray, [mixArray.buffer]);
 		} else {
 			console.error('positions or mvpMatrix is not defined!');

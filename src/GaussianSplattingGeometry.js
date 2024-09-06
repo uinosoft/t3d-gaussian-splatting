@@ -23,7 +23,7 @@ class GaussianSplattingGeometry extends Geometry {
 		this.addAttribute('splatIndex', splatIndexAttribute);
 	}
 
-	updateSplatIndexes(array, count, stride) {
+	updateSplatIndexes(array, count,validCount, stride) {
 		const splatIndexBuffer = this.attributes.splatIndex.buffer;
 		const splatIndexArray = splatIndexBuffer.array;
 
@@ -32,8 +32,9 @@ class GaussianSplattingGeometry extends Geometry {
 		}
 
 		splatIndexBuffer.version++;
+		splatIndexBuffer.updateRange = { offset: 0, count: validCount };
 
-		this.instanceCount = count;
+		this.instanceCount = validCount;
 	}
 
 }

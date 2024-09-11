@@ -434,15 +434,18 @@ class SplatIndexSortWorker {
 
 		this._worker.postMessage({ positions, count });
 
-        this._mixArray = new BigInt64Array(count);// eslint-disable-line
+		this._indices = new Uint32Array(count);
+		// this._mixArray = new BigInt64Array(count); // eslint-disable-line
 
 		this._worker.onmessage = e => {
 			if (e.data.init) {
 				this._status = WORKER_STATUS.READY;
 			} else {
-				this._mixArray = e.data;
-				const indices = new Uint32Array(this._mixArray.buffer);
-				this.onUpdate && this.onUpdate(indices, count, 2);
+				this._indices = e.data;
+				this.onUpdate && this.onUpdate(this._indices, count, 1);
+				// this._mixArray = e.data;
+				// const indices = new Uint32Array(this._mixArray.buffer);
+				// this.onUpdate && this.onUpdate(indices, count, 2);
 				this._status = WORKER_STATUS.READY;
 			}
 		};
@@ -458,7 +461,8 @@ class SplatIndexSortWorker {
 			if (Math.abs(dot - 1) >= 0.01) {
 				this._lastMVPMatrix.copy(mvpMatrix);
 				this._status = WORKER_STATUS.BUSY;
-				this._worker.postMessage({ mvpMatrix: el1, mixArray: this._mixArray }, [this._mixArray.buffer]);
+				// this._worker.postMessage({ mvpMatrix: el1, mixArray: this._mixArray }, [this._mixArray.buffer]);
+				this._worker.postMessage({ mvpMatrix: el1, indices: this._indices }, [this._indices.buffer]);
 			}
 		}
 	}
@@ -470,7 +474,8 @@ class SplatIndexSortWorker {
 		}
 
 		this._status = WORKER_STATUS.OFF;
-		this._mixArray = null;
+		// this._mixArray = null;
+		this._indices = null;
 	}
 
 }
@@ -485,33 +490,81 @@ function workerTemplate(self) {
 	let count = 0;
 	let positions;
 
+	let counts;
+	let starts;
+	let zArray;
+	let zIntArray;
+
 	self.onmessage = e => {
 		if (e.data.positions) {
 			positions = e.data.positions;
 			count = e.data.count;
+
+			counts = new Uint32Array(256 * 256);
+			starts = new Uint32Array(256 * 256);
+			zArray = new Float32Array(count);
+			zIntArray = new Int32Array(zArray.buffer);
+
 			self.postMessage({ init: true });
 		} else if (e.data.mvpMatrix) {
 			const mvpMatrix = e.data.mvpMatrix;
-			const mixArray = e.data.mixArray;
+			const indices = e.data.indices;
 
-			const indices = new Uint32Array(mixArray.buffer);
-			const floatMix = new Float32Array(mixArray.buffer);
-
-			for (let i = 0; i < count; i++) {
-				indices[2 * i] = i;
-			}
+			let minZ = Infinity, maxZ = -Infinity;
 
 			for (let i = 0; i < count; i++) {
-				floatMix[2 * i + 1] = 10000 - (
+				const z = -(
 					mvpMatrix[2] * positions[3 * i + 0] +
-                    mvpMatrix[6] * positions[3 * i + 1] +
-                    mvpMatrix[10] * positions[3 * i + 2]
+					mvpMatrix[6] * positions[3 * i + 1] +
+					mvpMatrix[10] * positions[3 * i + 2] +
+					mvpMatrix[14]
 				);
+
+				// todo frustum culling
+
+				zArray[i] = z;
+
+				if (z > maxZ) maxZ = z;
+				if (z < minZ) minZ = z;
 			}
 
-			mixArray.sort();
+			counts.fill(0);
 
-			self.postMessage(mixArray, [mixArray.buffer]);
+			const zInv = (256 * 256 - 1) / (maxZ - minZ);
+			for (let i = 0; i < count; i++) {
+				zIntArray[i] = ((zArray[i] - minZ) * zInv) | 0;
+				counts[zIntArray[i]]++;
+			}
+
+			starts[0] = 0;
+			for (let i = 1; i < 256 * 256; i++) {
+				starts[i] = starts[i - 1] + counts[i - 1];
+			}
+
+			for (let i = 0; i < count; i++) {
+				indices[starts[zIntArray[i]]++] = i;
+			}
+
+			// TODO
+
+			// const indices = new Uint32Array(mixArray.buffer);
+			// const floatMix = new Float32Array(mixArray.buffer);
+
+			// for (let i = 0; i < count; i++) {
+			// 	indices[2 * i] = i;
+			// }
+
+			// for (let i = 0; i < count; i++) {
+			// 	floatMix[2 * i + 1] = 10000 - (
+			// 		mvpMatrix[2] * positions[3 * i + 0] +
+			//         mvpMatrix[6] * positions[3 * i + 1] +
+			//         mvpMatrix[10] * positions[3 * i + 2]
+			// 	);
+			// }
+
+			// mixArray.sort();
+
+			self.postMessage(indices, [indices.buffer]);
 		} else {
 			console.error('positions or mvpMatrix is not defined!');
 		}

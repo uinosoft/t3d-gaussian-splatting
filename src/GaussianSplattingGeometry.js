@@ -23,12 +23,12 @@ class GaussianSplattingGeometry extends Geometry {
 		this.addAttribute('splatIndex', splatIndexAttribute);
 	}
 
-	updateSplatIndexes(array, count, stride) {
+	updateSplatIndexes(array, count) {
 		const splatIndexBuffer = this.attributes.splatIndex.buffer;
 		const splatIndexArray = splatIndexBuffer.array;
 
 		for (let i = 0; i < count; i++) {
-			splatIndexArray[i] = array[stride * i];
+			splatIndexArray[i] = array[i];
 		}
 
 		splatIndexBuffer.version++;

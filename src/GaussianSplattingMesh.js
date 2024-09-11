@@ -21,8 +21,8 @@ class GaussianSplattingMesh extends Mesh {
 		// Initialize worker
 		const worker = new SplatIndexSortWorker();
 		worker.init(internalData.positions, internalData.vertexCount);
-		worker.onUpdate = (indices, count, stride) => {
-			geometry.updateSplatIndexes(indices, count, stride);
+		worker.onUpdate = (indices, count) => {
+			geometry.updateSplatIndexes(indices, count);
 		};
 
 		this.frustumCulled = false;

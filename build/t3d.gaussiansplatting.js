@@ -397,12 +397,12 @@ class GaussianSplattingGeometry extends Geometry {
 		this.addAttribute('splatIndex', splatIndexAttribute);
 	}
 
-	updateSplatIndexes(array, count, stride) {
+	updateSplatIndices(array, count) {
 		const splatIndexBuffer = this.attributes.splatIndex.buffer;
 		const splatIndexArray = splatIndexBuffer.array;
 
 		for (let i = 0; i < count; i++) {
-			splatIndexArray[i] = array[stride * i];
+			splatIndexArray[i] = array[i];
 		}
 
 		splatIndexBuffer.version++;
@@ -420,7 +420,7 @@ class SplatIndexSortWorker {
 		this._worker = null;
 		this._status = WORKER_STATUS.OFF;
 
-		this._mixArray = null;
+		this._indices = null;
 
 		this._lastMVPMatrix = new Matrix4();
 	}
@@ -435,17 +435,13 @@ class SplatIndexSortWorker {
 		this._worker.postMessage({ positions, count });
 
 		this._indices = new Uint32Array(count);
-		// this._mixArray = new BigInt64Array(count); // eslint-disable-line
 
 		this._worker.onmessage = e => {
 			if (e.data.init) {
 				this._status = WORKER_STATUS.READY;
 			} else {
 				this._indices = e.data;
-				this.onUpdate && this.onUpdate(this._indices, count, 1);
-				// this._mixArray = e.data;
-				// const indices = new Uint32Array(this._mixArray.buffer);
-				// this.onUpdate && this.onUpdate(indices, count, 2);
+				this.onUpdate && this.onUpdate(this._indices, count);
 				this._status = WORKER_STATUS.READY;
 			}
 		};
@@ -461,7 +457,6 @@ class SplatIndexSortWorker {
 			if (Math.abs(dot - 1) >= 0.01) {
 				this._lastMVPMatrix.copy(mvpMatrix);
 				this._status = WORKER_STATUS.BUSY;
-				// this._worker.postMessage({ mvpMatrix: el1, mixArray: this._mixArray }, [this._mixArray.buffer]);
 				this._worker.postMessage({ mvpMatrix: el1, indices: this._indices }, [this._indices.buffer]);
 			}
 		}
@@ -474,7 +469,6 @@ class SplatIndexSortWorker {
 		}
 
 		this._status = WORKER_STATUS.OFF;
-		// this._mixArray = null;
 		this._indices = null;
 	}
 
@@ -545,25 +539,6 @@ function workerTemplate(self) {
 				indices[starts[zIntArray[i]]++] = i;
 			}
 
-			// TODO
-
-			// const indices = new Uint32Array(mixArray.buffer);
-			// const floatMix = new Float32Array(mixArray.buffer);
-
-			// for (let i = 0; i < count; i++) {
-			// 	indices[2 * i] = i;
-			// }
-
-			// for (let i = 0; i < count; i++) {
-			// 	floatMix[2 * i + 1] = 10000 - (
-			// 		mvpMatrix[2] * positions[3 * i + 0] +
-			//         mvpMatrix[6] * positions[3 * i + 1] +
-			//         mvpMatrix[10] * positions[3 * i + 2]
-			// 	);
-			// }
-
-			// mixArray.sort();
-
 			self.postMessage(indices, [indices.buffer]);
 		} else {
 			console.error('positions or mvpMatrix is not defined!');
@@ -588,8 +563,8 @@ class GaussianSplattingMesh extends Mesh {
 		// Initialize worker
 		const worker = new SplatIndexSortWorker();
 		worker.init(internalData.positions, internalData.vertexCount);
-		worker.onUpdate = (indices, count, stride) => {
-			geometry.updateSplatIndexes(indices, count, stride);
+		worker.onUpdate = (indices, count) => {
+			geometry.updateSplatIndices(indices, count);
 		};
 
 		this.frustumCulled = false;

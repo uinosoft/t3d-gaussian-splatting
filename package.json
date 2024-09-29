@@ -1,6 +1,6 @@
 {
     "name": "t3d-gaussian-splatting",
-    "version": "0.0.1",
+    "version": "0.0.2",
     "description": "This is a t3d-based implementation of 3D Gaussian Splatting for Real-Time Radiance Field Rendering.",
     "type": "module",
     "main": "build/t3d.gaussiansplatting.js",

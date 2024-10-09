@@ -8,8 +8,7 @@ const GaussianSplattingShader = {
 		'centersTexture': null,
 		'colorsTexture': null,
 		'focal': [0, 0],
-		'basisViewport': [0, 0],
-		'alphaCutOff': 0.25
+		'basisViewport': [0, 0]
 	},
 
 	// Contains the code to project 3D covariance to 2D and from there calculate the quad (using the eigen vectors of the
@@ -158,7 +157,7 @@ const GaussianSplattingShader = {
 		#include <common_frag>
         #include <logdepthbuf_pars_frag>
 
-        uniform float alphaCutOff;
+        uniform float u_AlphaTest;
 
 		varying vec4 vColor;
 		varying vec2 vPosition;
@@ -174,9 +173,7 @@ const GaussianSplattingShader = {
             // away than sqrt(8) standard deviations from the mean.
             if (A > 8.0) discard;
 
-            if (vColor.a < alphaCutOff) {
-                discard;
-            }
+            if (vColor.a < u_AlphaTest) discard;
 
             vec3 color = vColor.rgb;
 

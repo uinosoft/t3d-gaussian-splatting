@@ -40,7 +40,7 @@
 		import { ForwardRenderer } from 't3d/addons/render/ForwardRenderer.js';
 		import { OrbitControls } from 't3d/addons/controls/OrbitControls.js';
 		import { ViewControls } from 't3d/addons/controls/ViewControls.js';
-		import { Clock } from 't3d/addons/Clock.js';
+		import { Timer } from 't3d/addons/misc/Timer.js';
 
 		import { SplatLoader, PLYLoader } from 't3d-gaussian-splatting';
 
@@ -71,7 +71,7 @@
 		const viewControls = new ViewControls(camera, {
 			target: controller.target,
 			up: controller.up,
-			style: 'position:fixed;top:0;left:0;opacity:0.9;z-index:10000;user-select:none;'
+			style: 'position:fixed;bottom:0;left:0;opacity:0.9;z-index:10000;user-select:none;'
 		});
 		document.body.appendChild(viewControls.domElement);
 
@@ -134,30 +134,39 @@
 			}
 		});
 
-		const params = { rotateX: 0, alphaCutOff: 0, color: [1, 1, 1], opacity: 1 };
+		// GUI
+
+		const params = { rotateX: 0, color: [1, 1, 1], opacity: 1, alphaTest: 0 };
 		const debugParams = { points: 0 };
+
 		const gui = new GUI();
-		gui.add(params, 'rotateX', [-90, 0, 90, 180]);
-		gui.add(params, 'alphaCutOff', 0, 1);
-		gui.addColor(params, 'color');
-		gui.add(params, 'opacity', 0, 1);
+		gui.add(params, 'rotateX', [-90, 0, 90, 180]).name('Rotate X');
+		
+		const materialFolder = gui.addFolder('Material');
+		materialFolder.addColor(params, 'color').name('Color');
+		materialFolder.add(params, 'opacity', 0, 1).name('Opacity');
+		materialFolder.add(params, 'alphaTest', 0, 1).name('Alpha Test');
+
 		const debugFolder = gui.addFolder('Debug');
 		debugFolder.add(debugParams, 'points').name('Points Number').listen().enable(false);
 
-		const clock = new Clock();
-		function loop(count) {
+		//
+
+		const timer = new Timer();
+
+		function loop(timestamp) {
 			requestAnimationFrame(loop);
 
-			const deltaTime = clock.getDelta();
+			timer.update(timestamp);
 
 			controller.update();
 
-			viewControls.update(deltaTime);
+			viewControls.update(timer.getDelta());
 
 			meshContainer.euler.x = params.rotateX / 180 * Math.PI;
 
 			if (mesh) {
-				mesh.material.uniforms.alphaCutOff = params.alphaCutOff;
+				mesh.material.alphaTest = params.alphaTest;
 				mesh.material.diffuse.fromArray(params.color);
 				mesh.material.opacity = params.opacity;
 				mesh.update(camera, width, height);
